@@ -10,6 +10,7 @@ import {
   logAuditAction,
 } from '../services/db.service';
 import { sendTextMessage } from '../services/whatsapp.service';
+import { sanitizeInput } from '../utils/sanitization';
 
 const router = Router();
 
@@ -105,6 +106,8 @@ router.post('/conversations/:id/messages', async (req: Request, res: Response): 
       return;
     }
 
+    const sanitizedBody = sanitizeInput(body);
+
     const businessId = req.businessId!;
     const conversation = await getConversationById(id);
 
@@ -114,10 +117,10 @@ router.post('/conversations/:id/messages', async (req: Request, res: Response): 
     }
 
     // 1. Send the outbound message to WhatsApp API
-    const messageId = await sendTextMessage(conversation.customer_number, body);
+    const messageId = await sendTextMessage(conversation.customer_number, sanitizedBody);
 
     // 2. Save the message to database (sender is 'bot' for outgoing channel messages)
-    const savedMessageId = await saveMessage(id, messageId, 'bot', body, 'humano');
+    const savedMessageId = await saveMessage(id, messageId, 'bot', sanitizedBody, 'humano');
 
     // 3. Pause AI for this conversation
     const statusBefore = conversation.status;
@@ -376,6 +379,8 @@ router.post('/conversations/:id/mensajes-humano', async (req: Request, res: Resp
       return;
     }
 
+    const sanitizedBody = sanitizeInput(body);
+
     const businessId = req.businessId!;
     const conversation = await getConversationById(id);
 
@@ -391,10 +396,10 @@ router.post('/conversations/:id/mensajes-humano', async (req: Request, res: Resp
     }
 
     // 1. Send the outbound message to WhatsApp API
-    const messageId = await sendTextMessage(conversation.customer_number, body);
+    const messageId = await sendTextMessage(conversation.customer_number, sanitizedBody);
 
     // 2. Save the message to database (sender is 'bot' for outgoing channel messages)
-    const savedMessageId = await saveMessage(id, messageId, 'bot', body, 'humano', req.userId!);
+    const savedMessageId = await saveMessage(id, messageId, 'bot', sanitizedBody, 'humano', req.userId!);
 
     // 3. Log trace of the human message turn
     await logConversationTrace(

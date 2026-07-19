@@ -3,10 +3,18 @@ import jwt from 'jsonwebtoken';
 import bcryptjs from 'bcryptjs';
 import { config } from '../config';
 import { findUserByEmail } from '../services/db.service';
+import { rateLimitMiddleware } from '../middlewares/rate-limit.middleware';
 
 const router = Router();
 
-router.post('/auth/login', async (req: Request, res: Response): Promise<void> => {
+router.post(
+  '/auth/login',
+  rateLimitMiddleware({
+    windowMs: 60 * 1000,
+    max: 10,
+    message: 'Demasiados intentos de inicio de sesión. Por favor intente más tarde.',
+  }),
+  async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
 
@@ -33,7 +41,7 @@ router.post('/auth/login', async (req: Request, res: Response): Promise<void> =>
         user_id: user.id,
       },
       config.jwtSecret,
-      { expiresIn: '24h' },
+      { expiresIn: config.jwtExpiresIn as any },
     );
 
     res.json({

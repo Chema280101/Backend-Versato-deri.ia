@@ -16,6 +16,7 @@ export const config = {
     url: process.env.DATABASE_URL || '',
   },
   jwtSecret: process.env.JWT_SECRET || 'fallback_secret_key',
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
   isProduction: process.env.NODE_ENV === 'production',
   alertCheckIntervalMs: parseInt(process.env.ALERT_CHECK_INTERVAL_MS || '300000', 10),
 };

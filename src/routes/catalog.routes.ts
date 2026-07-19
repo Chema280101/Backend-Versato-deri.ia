@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { createCatalogItem } from '../services/db.service';
+import { sanitizeInput } from '../utils/sanitization';
 
 const router = Router();
 
@@ -79,11 +80,11 @@ router.post('/internal/catalog/import', async (req: Request, res: Response): Pro
       if (!line) continue;
 
       const values = parseCSVLine(line);
-      const nombre = values[nameIndex];
-      const descripcion = descIndex !== -1 ? values[descIndex] : '';
+      const nombre = values[nameIndex] ? sanitizeInput(values[nameIndex]) : '';
+      const descripcion = descIndex !== -1 && values[descIndex] ? sanitizeInput(values[descIndex]) : '';
       const precio = parseFloat(values[priceIndex]);
       const stock = parseInt(values[stockIndex], 10);
-      const categoria = values[catIndex];
+      const categoria = values[catIndex] ? sanitizeInput(values[catIndex]) : '';
 
       if (!nombre || isNaN(precio) || isNaN(stock) || !categoria) {
         console.warn(`[WARNING]: Skipping invalid CSV line: "${line}"`);

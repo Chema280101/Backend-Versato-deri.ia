@@ -42,6 +42,25 @@ async function main() {
     process.exit(1);
   }
 
+  const isPasswordComplex = (pwd: string): boolean => {
+    if (pwd.length < 8) return false;
+    const hasUppercase = /[A-Z]/.test(pwd);
+    const hasLowercase = /[a-z]/.test(pwd);
+    const hasDigit = /[0-9]/.test(pwd);
+    const hasSpecial = /[^A-Za-z0-9]/.test(pwd);
+    return hasUppercase && hasLowercase && hasDigit && hasSpecial;
+  };
+
+  if (!isPasswordComplex(password)) {
+    console.error('\x1b[31m[ERROR]: La contraseña no cumple con los requisitos mínimos de complejidad:\x1b[0m');
+    console.error('- Mínimo 8 caracteres');
+    console.error('- Al menos una letra mayúscula');
+    console.error('- Al menos una letra minúscula');
+    console.error('- Al menos un número');
+    console.error('- Al menos un carácter especial (ej. @, $, !, %, *, ?, &, #, ., etc.)');
+    process.exit(1);
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

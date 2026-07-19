@@ -1,8 +1,11 @@
 import request from 'supertest';
 import bcryptjs from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import app from '../app';
 import { pool } from '../services/db.service';
 import { runMigrations } from '../migrations';
+import { config } from '../config';
 import * as whatsappService from '../services/whatsapp.service';
 
 // Mock the outbound WhatsApp service
@@ -23,6 +26,11 @@ describe('Multi-Tenant Isolation and Security Tests', () => {
     // 1. Setup clean schema
     await pool.query(`DROP SCHEMA IF EXISTS ${testSchema} CASCADE;`);
     await pool.query(`CREATE SCHEMA ${testSchema};`);
+
+    // Ensure all connections in the pool use the test schema
+    pool.on('connect', (client) => {
+      client.query(`SET search_path TO ${testSchema};`);
+    });
     await pool.query(`SET search_path TO ${testSchema};`);
 
     // 2. Run migrations
@@ -308,6 +316,155 @@ describe('Multi-Tenant Isolation and Security Tests', () => {
       );
       expect(traces[0].status_after).toBe('pausada_humano');
       expect(traces[0].generated_by).toBe('humano');
+    });
+  });
+
+  describe('Additional Beta Security and Input Sanitization Tests', () => {
+    let originalAppSecret: string;
+
+    beforeAll(() => {
+      originalAppSecret = config.whatsapp.appSecret;
+      config.whatsapp.appSecret = 'security_test_app_secret';
+    });
+
+    afterAll(() => {
+      config.whatsapp.appSecret = originalAppSecret;
+    });
+
+    it('should reject a JWT manipulated/signed with a fake secret key (401)', async () => {
+      const fakeToken = jwt.sign(
+        { business_id: 20, user_id: 2 },
+        'fake_secret_key',
+        { expiresIn: '8h' }
+      );
+
+      const res = await request(app)
+        .get('/conversations')
+        .set('Authorization', `Bearer ${fakeToken}`);
+
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty('error');
+      expect(res.body.error).toBe('Invalid or expired token');
+    });
+
+    it('should prevent multi-tenant data leaks in metrics endpoints even when guessable/malicious parameters are injected', async () => {
+      // Operator A requests their own metrics but tries to inject business_id=20 (Business B) in query params
+      const res = await request(app)
+        .get('/metrics/ventas')
+        .set('Authorization', `Bearer ${jwtTokenA}`)
+        .query({ business_id: 20, businessId: 20 });
+
+      expect(res.status).toBe(200);
+      // The results should strictly reflect Business A (order ticket/conversion rate/details for business_id 10)
+      expect(res.body.detalle_pedidos.length).toBe(0); // Since Business A has no orders in the default date range in the DB
+      
+      // Let's create an order for Business B (id=20) and verify it's NOT leaked
+      const orderRes = await pool.query(`
+        INSERT INTO orders (conversation_id, business_id, total, items, created_at)
+        VALUES ($1, 20, 150.00, '[]'::jsonb, NOW() - INTERVAL '1 day')
+        RETURNING id;
+      `, [conversationIdB]);
+      const orderId = orderRes.rows[0].id;
+
+      // Query metrics of Business A again with parameters pointing to Business B
+      const resLeakCheck = await request(app)
+        .get('/metrics/ventas')
+        .set('Authorization', `Bearer ${jwtTokenA}`)
+        .query({ business_id: 20, businessId: 20 });
+
+      expect(resLeakCheck.status).toBe(200);
+      // It must ignore the parameters and still return 0 orders since Business A has no orders
+      expect(resLeakCheck.body.total_pedidos_confirmados).toBe(0);
+      expect(resLeakCheck.body.detalle_pedidos.length).toBe(0);
+
+      // Verify that Business B operator CAN see their own order (to confirm the order is actually queryable)
+      const resB = await request(app)
+        .get('/metrics/ventas')
+        .set('Authorization', `Bearer ${jwtTokenB}`);
+
+      expect(resB.status).toBe(200);
+      expect(resB.body.total_pedidos_confirmados).toBe(1);
+      expect(resB.body.detalle_pedidos[0].id).toBe(orderId);
+    });
+
+    it('should rate limit endpoints and return 429 when max requests are exceeded with x-test-rate-limit active', async () => {
+      // Loop to exceed rate limits (limit is 10 for login)
+      for (let i = 0; i < 10; i++) {
+        await request(app)
+          .post('/auth/login')
+          .set('x-test-rate-limit', 'true')
+          .send({ email: 'operatorA@test.com', password: 'passwordA' });
+      }
+
+      // 11th request must fail with 429
+      const res = await request(app)
+        .post('/auth/login')
+        .set('x-test-rate-limit', 'true')
+        .send({ email: 'operatorA@test.com', password: 'passwordA' });
+
+      expect(res.status).toBe(429);
+      expect(res.body.error).toContain('Demasiados intentos');
+    });
+
+    it('should sanitize HTML inputs from WhatsApp webhook before saving to database', async () => {
+      const payload = {
+        object: 'whatsapp_business_account',
+        entry: [{
+          id: 'entry_id',
+          changes: [{
+            value: {
+              messaging_product: 'whatsapp',
+              metadata: { phone_number_id: 'phone_number_a' },
+              messages: [{
+                from: '111222',
+                id: 'wamid.xss_test_incoming',
+                timestamp: '1749416383',
+                type: 'text',
+                text: { body: '<script>alert("xss")</script>' }
+              }]
+            },
+            field: 'messages'
+          }]
+        }]
+      };
+
+      const hmac = crypto
+        .createHmac('sha256', config.whatsapp.appSecret)
+        .update(JSON.stringify(payload))
+        .digest('hex');
+      const signatureHeader = `sha256=${hmac}`;
+
+      const res = await request(app)
+        .post('/webhook')
+        .set('X-Hub-Signature-256', signatureHeader)
+        .send(payload);
+
+      expect(res.status).toBe(200);
+
+      // Sleep to let async handler complete processing
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
+      // Query database to check if saved body is sanitized
+      const { rows } = await pool.query(
+        "SELECT body FROM messages WHERE message_id = 'wamid.xss_test_incoming';"
+      );
+      expect(rows.length).toBe(1);
+      expect(rows[0].body).toBe('&lt;script&gt;alert(&quot;xss&quot;)&lt;&#x2F;script&gt;');
+    });
+
+    it('should sanitize operator messages sent from the panel before saving and sending', async () => {
+      const res = await request(app)
+        .post(`/conversations/${conversationIdA}/messages`)
+        .set('Authorization', `Bearer ${jwtTokenA}`)
+        .send({ body: '<div style="color: red;">hello operator</div>' });
+
+      expect(res.status).toBe(201);
+      const messageId = res.body.message_id;
+
+      // Query database to check if body is saved in its sanitized form
+      const { rows } = await pool.query('SELECT body FROM messages WHERE id = $1;', [messageId]);
+      expect(rows.length).toBe(1);
+      expect(rows[0].body).toBe('&lt;div style=&quot;color: red;&quot;&gt;hello operator&lt;&#x2F;div&gt;');
     });
   });
 });

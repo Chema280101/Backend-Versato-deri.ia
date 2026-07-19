@@ -4,6 +4,8 @@ import { config } from '../config';
 import { findOrCreateConversation, saveMessage, getBusinessByPhoneNumberId } from '../services/db.service';
 import { GeminiLLMProvider } from '../services/llm/gemini-llm.provider';
 import { ConversationalEngine } from '../services/conversational-engine.service';
+import { rateLimitMiddleware } from '../middlewares/rate-limit.middleware';
+import { sanitizeInput } from '../utils/sanitization';
 
 const router = Router();
 const geminiProvider = new GeminiLLMProvider();
@@ -66,26 +68,42 @@ const verifySignature = (req: Request, res: Response, next: NextFunction): void 
  * WhatsApp webhook verification endpoint.
  * Meta verification requests send hub.mode, hub.verify_token, and hub.challenge as query params.
  */
-router.get('/webhook', (req: Request, res: Response): void => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
+router.get(
+  '/webhook',
+  rateLimitMiddleware({
+    windowMs: 60 * 1000,
+    max: 200,
+    message: 'Demasiadas peticiones al webhook. Por favor intente más tarde.',
+  }),
+  (req: Request, res: Response): void => {
+    const mode = req.query['hub.mode'];
+    const token = req.query['hub.verify_token'];
+    const challenge = req.query['hub.challenge'];
 
-  if (mode === 'subscribe' && token === config.whatsapp.verifyToken) {
-    console.log('[INFO]: Webhook verified successfully.');
-    res.status(200).send(challenge);
-    return;
-  }
+    if (mode === 'subscribe' && token === config.whatsapp.verifyToken) {
+      console.log('[INFO]: Webhook verified successfully.');
+      res.status(200).send(challenge);
+      return;
+    }
 
-  console.warn('[WARNING]: Webhook verification failed. Token mismatch or invalid mode.');
-  res.sendStatus(403);
-});
+    console.warn('[WARNING]: Webhook verification failed. Token mismatch or invalid mode.');
+    res.sendStatus(403);
+  },
+);
 
 /**
  * POST /webhook
  * Receives incoming WhatsApp webhook notifications from Meta.
  */
-router.post('/webhook', verifySignature, (req: Request, res: Response): void => {
+router.post(
+  '/webhook',
+  rateLimitMiddleware({
+    windowMs: 60 * 1000,
+    max: 200,
+    message: 'Demasiadas peticiones al webhook. Por favor intente más tarde.',
+  }),
+  verifySignature,
+  (req: Request, res: Response): void => {
   console.log('[INFO]: Received WhatsApp webhook payload:', JSON.stringify(req.body, null, 2));
 
   // Meta expects a rapid 200 OK response to prevent retries.
@@ -108,7 +126,7 @@ router.post('/webhook', verifySignature, (req: Request, res: Response): void => 
     try {
       const senderNumber = message.from;
       const messageId = message.id;
-      const messageText = message.text?.body;
+      const messageText = message.text?.body ? sanitizeInput(message.text.body) : undefined;
 
       if (!senderNumber || !messageId) {
         console.warn('[WARNING]: Missing essential message fields (from, id). Skipping.');

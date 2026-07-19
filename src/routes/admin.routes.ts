@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middlewares/auth.middleware';
 import { platformOperatorMiddleware } from '../middlewares/admin.middleware';
 import { pool } from '../services/db.service';
+import { sanitizeInput } from '../utils/sanitization';
 
 const router = Router();
 
@@ -23,6 +24,8 @@ router.post('/admin/pricing', async (req: Request, res: Response): Promise<void>
       res.status(400).json({ error: 'Field "pais" is required and must be a non-empty string' });
       return;
     }
+
+    const sanitizedPais = sanitizeInput(pais);
 
     const validCategories = ['marketing', 'utilidad', 'servicio', 'autenticacion'];
     if (!categoria || !validCategories.includes(categoria)) {
@@ -64,7 +67,7 @@ router.post('/admin/pricing', async (req: Request, res: Response): Promise<void>
         AND vigente_desde < $3
         AND (vigente_hasta IS NULL OR vigente_hasta > $3);
     `;
-    await client.query(updateQuery, [pais, categoria, desde]);
+    await client.query(updateQuery, [sanitizedPais, categoria, desde]);
 
     // Insert the new rate
     const insertQuery = `
@@ -72,7 +75,7 @@ router.post('/admin/pricing', async (req: Request, res: Response): Promise<void>
       VALUES ($1, $2, $3, $4, $5)
       RETURNING id, pais, categoria, tarifa_usd, vigente_desde, vigente_hasta;
     `;
-    const result = await client.query(insertQuery, [pais, categoria, tarifa_usd, desde, hasta]);
+    const result = await client.query(insertQuery, [sanitizedPais, categoria, tarifa_usd, desde, hasta]);
 
     await client.query('COMMIT');
 
