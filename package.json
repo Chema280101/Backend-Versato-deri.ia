@@ -8,6 +8,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "jest",
+    "test:multi-tenant": "jest src/tests/security.test.ts src/tests/fase3-e2e-parallel.test.ts src/tests/socket.test.ts src/tests/mensajes-humano.test.ts src/tests/orders-validation.test.ts src/tests/metrics.test.ts src/tests/alert.test.ts",
+    "test:others": "jest --testPathIgnorePatterns=\"(security|fase3-e2e-parallel|socket|mensajes-humano|orders-validation|metrics|alert)\"",
     "lint": "eslint \"src/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\"",
     "create-client": "tsx create-client.ts"

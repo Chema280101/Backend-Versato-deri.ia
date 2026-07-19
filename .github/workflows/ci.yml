@@ -1,0 +1,61 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, master, dev, development ]
+  pull_request:
+    branches: [ main, master, dev, development ]
+
+jobs:
+  test:
+    name: Run Test Suite
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        # Ensure postgres is fully up and running before tasks start
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Multi-Tenant Isolation Tests (CRITICAL)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          JWT_SECRET: dummy_jwt_secret_for_ci_testing_purposes
+          WHATSAPP_TOKEN: dummy_whatsapp_token
+          PHONE_NUMBER_ID: dummy_phone_number_id
+          VERIFY_TOKEN: dummy_verify_token
+          APP_SECRET: dummy_app_secret
+        run: npm run test:multi-tenant
+
+      - name: Run Remaining Tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          JWT_SECRET: dummy_jwt_secret_for_ci_testing_purposes
+          WHATSAPP_TOKEN: dummy_whatsapp_token
+          PHONE_NUMBER_ID: dummy_phone_number_id
+          VERIFY_TOKEN: dummy_verify_token
+          APP_SECRET: dummy_app_secret
+        run: npm run test:others
