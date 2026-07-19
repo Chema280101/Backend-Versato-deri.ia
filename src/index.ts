@@ -3,6 +3,7 @@ import { config } from './config';
 import { initializeDatabase } from './services/db.service';
 import { initSocketServer } from './services/socket.service';
 import { startAlertScheduler } from './services/alert.service';
+import { startBackupScheduler } from './services/backup.service';
 
 async function startServer() {
   try {
@@ -22,6 +23,9 @@ async function startServer() {
 
     // Initialize Alert Scheduler for stagnant conversations
     startAlertScheduler();
+
+    // Initialize Automatic Database Backup scheduler
+    startBackupScheduler();
 
     return server;
   } catch (error) {

@@ -19,7 +19,14 @@ export const config = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
   isProduction: process.env.NODE_ENV === 'production',
   alertCheckIntervalMs: parseInt(process.env.ALERT_CHECK_INTERVAL_MS || '300000', 10),
+  alertWebhookUrl: process.env.ALERT_WEBHOOK_URL || '',
+  backup: {
+    enabled: process.env.BACKUP_ENABLED === 'true',
+    directory: process.env.BACKUP_DIRECTORY || 'backups',
+    retentionDays: parseInt(process.env.BACKUP_RETENTION_DAYS || '7', 10),
+  },
 };
+
 
 // Simple validation to ensure key configuration exists
 const requiredVars = [

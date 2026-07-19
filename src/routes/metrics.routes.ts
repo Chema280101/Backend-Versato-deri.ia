@@ -269,7 +269,7 @@ router.get('/metrics/costos', async (req: Request, res: Response): Promise<void>
 
     // Detailed message logs for audit/traceability
     const detailsRes = await pool.query(
-      `SELECT id, conversation_id, category, cost::float as cost, created_at
+      `SELECT id, conversation_id, category, cost::float as cost, created_at, generated_by
        FROM messages
        WHERE business_id = $1 
          AND sender = 'bot'
@@ -444,7 +444,7 @@ router.get('/metrics/embudo', async (req: Request, res: Response): Promise<void>
          UNION
          SELECT conversation_id, sales_state_after AS stage FROM conversation_traces WHERE conversation_id IN (SELECT id FROM convs_in_range)
        )
-       SELECT stage, COUNT(DISTINCT conversation_id)::int AS count
+       SELECT stage, COUNT(DISTINCT conversation_id)::int AS count, COALESCE(ARRAY_AGG(DISTINCT conversation_id), '{}') AS conversation_ids
        FROM reached_stages
        GROUP BY stage;`,
       [businessId, desde, hasta]
@@ -576,6 +576,26 @@ router.get('/metrics/exportar-csv', async (req: Request, res: Response): Promise
   } catch (error) {
     console.error('[ERROR]: Failed to export CSV:', error);
     res.status(500).json({ error: 'Internal server error while exporting CSV' });
+  }
+});
+
+/**
+ * GET /metrics/tarifas
+ * Returns currently active/upcoming Meta rates.
+ */
+router.get('/metrics/tarifas', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const query = `
+      SELECT id, pais, categoria, tarifa_usd, vigente_desde, vigente_hasta
+      FROM pricing_config
+      WHERE vigente_hasta IS NULL OR vigente_hasta >= NOW()
+      ORDER BY pais ASC, categoria ASC, vigente_desde ASC;
+    `;
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('[ERROR]: Failed to fetch active tariffs:', error);
+    res.status(500).json({ error: 'Internal server error while fetching active tariffs' });
   }
 });
 

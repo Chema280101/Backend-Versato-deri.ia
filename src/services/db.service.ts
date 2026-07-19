@@ -228,6 +228,7 @@ export interface BusinessConfig {
   name: string;
   brandPrompt: string | null;
   escalationThreshold?: number | null;
+  trainingInfo?: string | null;
 }
 
 export interface HistoricMessage {
@@ -375,7 +376,7 @@ export async function getMessagesHistory(
  * Retrieves business configuration by ID.
  */
 export async function getBusinessConfig(businessId: number): Promise<BusinessConfig | null> {
-  const query = 'SELECT name, brand_prompt, escalation_threshold FROM businesses WHERE id = $1;';
+  const query = 'SELECT name, brand_prompt, escalation_threshold, training_info FROM businesses WHERE id = $1;';
   const result = await pool.query(query, [businessId]);
   if (result.rows.length === 0) {
     return null;
@@ -387,7 +388,102 @@ export async function getBusinessConfig(businessId: number): Promise<BusinessCon
       result.rows[0].escalation_threshold !== null
         ? parseFloat(result.rows[0].escalation_threshold)
         : null,
+    trainingInfo: result.rows[0].training_info || null,
   };
+}
+
+/**
+ * Updates a business configuration.
+ */
+export async function updateBusinessConfig(
+  businessId: number,
+  updates: {
+    name?: string;
+    brandPrompt?: string | null;
+    escalationThreshold?: number | null;
+    trainingInfo?: string | null;
+  },
+): Promise<void> {
+  const fields: string[] = [];
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  if (updates.name !== undefined) {
+    fields.push(`name = $${paramIndex++}`);
+    params.push(updates.name);
+  }
+  if (updates.brandPrompt !== undefined) {
+    fields.push(`brand_prompt = $${paramIndex++}`);
+    params.push(updates.brandPrompt);
+  }
+  if (updates.escalationThreshold !== undefined) {
+    fields.push(`escalation_threshold = $${paramIndex++}`);
+    params.push(updates.escalationThreshold);
+  }
+  if (updates.trainingInfo !== undefined) {
+    fields.push(`training_info = $${paramIndex++}`);
+    params.push(updates.trainingInfo);
+  }
+
+  if (fields.length === 0) return;
+
+  params.push(businessId);
+  const query = `UPDATE businesses SET ${fields.join(', ')} WHERE id = $${paramIndex};`;
+  await pool.query(query, params);
+}
+
+/**
+ * Updates an existing catalog item under tenant isolation.
+ */
+export async function updateCatalogItem(
+  id: number,
+  businessId: number,
+  updates: Partial<Omit<CatalogItem, 'id' | 'businessId'>>,
+): Promise<void> {
+  const fields: string[] = [];
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  if (updates.nombre !== undefined) {
+    fields.push(`nombre = $${paramIndex++}`);
+    params.push(updates.nombre);
+  }
+  if (updates.descripcion !== undefined) {
+    fields.push(`descripcion = $${paramIndex++}`);
+    params.push(updates.descripcion);
+  }
+  if (updates.precio !== undefined) {
+    fields.push(`precio = $${paramIndex++}`);
+    params.push(updates.precio);
+  }
+  if (updates.stock !== undefined) {
+    fields.push(`stock = $${paramIndex++}`);
+    params.push(updates.stock);
+  }
+  if (updates.categoria !== undefined) {
+    fields.push(`categoria = $${paramIndex++}`);
+    params.push(updates.categoria);
+  }
+  if (updates.activo !== undefined) {
+    fields.push(`activo = $${paramIndex++}`);
+    params.push(updates.activo);
+  }
+
+  if (fields.length === 0) return;
+
+  params.push(id, businessId);
+  const query = `UPDATE catalog_items SET ${fields.join(', ')} WHERE id = $${paramIndex++} AND business_id = $${paramIndex};`;
+  await pool.query(query, params);
+}
+
+/**
+ * Deletes or deactivates a catalog item under tenant isolation.
+ * (We do soft delete or hard delete; here we do a hard delete to match routing, or soft delete setting active=false).
+ * Let's implement hard delete to clean up DB, checking first.
+ */
+export async function deleteCatalogItem(id: number, businessId: number): Promise<void> {
+  const query = 'DELETE FROM catalog_items WHERE id = $1 AND business_id = $2;';
+  await pool.query(query, [id, businessId]);
 }
 
 export interface CatalogItem {
@@ -531,11 +627,13 @@ export interface User {
   passwordHash: string;
   nombre: string;
   rol: string;
+  avatar?: string | null;
+  nombreLastChangedAt?: Date | null;
 }
 
 export async function findUserByEmail(email: string): Promise<User | null> {
   const query =
-    'SELECT id, business_id, email, password_hash, nombre, rol FROM users WHERE email = $1;';
+    'SELECT id, business_id, email, password_hash, nombre, rol, avatar, nombre_last_changed_at FROM users WHERE email = $1;';
   const result = await pool.query(query, [email]);
   if (result.rows.length === 0) {
     return null;
@@ -548,12 +646,14 @@ export async function findUserByEmail(email: string): Promise<User | null> {
     passwordHash: row.password_hash,
     nombre: row.nombre,
     rol: row.rol,
+    avatar: row.avatar,
+    nombreLastChangedAt: row.nombre_last_changed_at ? new Date(row.nombre_last_changed_at) : null,
   };
 }
 
 export async function findUserById(id: number): Promise<User | null> {
   const query =
-    'SELECT id, business_id, email, password_hash, nombre, rol FROM users WHERE id = $1;';
+    'SELECT id, business_id, email, password_hash, nombre, rol, avatar, nombre_last_changed_at FROM users WHERE id = $1;';
   const result = await pool.query(query, [id]);
   if (result.rows.length === 0) {
     return null;
@@ -566,7 +666,46 @@ export async function findUserById(id: number): Promise<User | null> {
     passwordHash: row.password_hash,
     nombre: row.nombre,
     rol: row.rol,
+    avatar: row.avatar,
+    nombreLastChangedAt: row.nombre_last_changed_at ? new Date(row.nombre_last_changed_at) : null,
   };
+}
+
+export async function updateUser(
+  id: number,
+  fields: {
+    nombre?: string;
+    passwordHash?: string;
+    avatar?: string | null;
+    nombreLastChangedAt?: Date | null;
+  }
+): Promise<void> {
+  const updates: string[] = [];
+  const values: any[] = [];
+  let idx = 1;
+
+  if (fields.nombre !== undefined) {
+    updates.push(`nombre = $${idx++}`);
+    values.push(fields.nombre);
+  }
+  if (fields.passwordHash !== undefined) {
+    updates.push(`password_hash = $${idx++}`);
+    values.push(fields.passwordHash);
+  }
+  if (fields.avatar !== undefined) {
+    updates.push(`avatar = $${idx++}`);
+    values.push(fields.avatar);
+  }
+  if (fields.nombreLastChangedAt !== undefined) {
+    updates.push(`nombre_last_changed_at = $${idx++}`);
+    values.push(fields.nombreLastChangedAt);
+  }
+
+  if (updates.length === 0) return;
+
+  values.push(id);
+  const query = `UPDATE users SET ${updates.join(', ')} WHERE id = $${idx};`;
+  await pool.query(query, values);
 }
 
 export async function createUser(

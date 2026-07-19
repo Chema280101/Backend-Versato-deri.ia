@@ -26,6 +26,7 @@ export interface LLMContext {
   catalog: CatalogItem[];
   brandPrompt: string;
   businessName: string;
+  trainingInfo?: string;
 }
 
 export interface LLMProvider {

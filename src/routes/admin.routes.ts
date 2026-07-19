@@ -6,9 +6,8 @@ import { sanitizeInput } from '../utils/sanitization';
 
 const router = Router();
 
-// Apply authMiddleware and platformOperatorMiddleware to all administrative routes
-router.use(authMiddleware);
-router.use(platformOperatorMiddleware);
+// Apply authMiddleware and platformOperatorMiddleware strictly to administrative routes
+router.use('/admin', authMiddleware, platformOperatorMiddleware);
 
 /**
  * POST /admin/pricing

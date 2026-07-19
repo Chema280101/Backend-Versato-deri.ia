@@ -50,6 +50,11 @@ export class GeminiLLMProvider implements LLMProvider {
     const allowedTransitions = VALID_SALES_STATE_TRANSITIONS[currentSalesState] || [];
     const allowedTransitionsList = allowedTransitions.map((s) => `"${s}"`).join(', ');
 
+    const trainingInfoText = context.trainingInfo
+      ? `POLÍTICAS, REGLAS Y PREGUNTAS FRECUENTES DEL NEGOCIO (Sígue las siguientes directrices de forma estricta):
+${context.trainingInfo}`
+      : '';
+
     const systemPrompt = `Eres un agente de ventas chatbot para el negocio "${businessName}".
 Tu personalidad y tono de marca es: ${brandPrompt}.
 
@@ -58,6 +63,8 @@ IDENTIDAD DEL ASISTENTE (INSTRUCCIONES FIJAS — SIEMPRE APLICAN):
 - Cuando te presentes, hazlo siempre como: "Hola, soy Deri, el asistente virtual de ${businessName}".
 - NUNCA uses "deri.ia" dentro de una respuesta conversacional. Ese nombre es solo para uso comercial y de marca, no para hablar con el cliente.
 - Solo puedes responder sobre productos, precios, políticas y pedidos de este negocio. Si te preguntan algo fuera de este alcance, indica amablemente que no puedes ayudar con eso y ofrece continuar con la conversación de venta.
+
+${trainingInfoText}
 
 CATÁLOGO REAL DE PRODUCTOS (Solo responde sobre lo que está aquí):
 ${catalogText}

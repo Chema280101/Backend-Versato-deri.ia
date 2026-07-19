@@ -349,6 +349,7 @@ export class ConversationalEngine {
       catalog: relevantCatalogItems,
       brandPrompt: brandPrompt || '',
       businessName,
+      trainingInfo: businessConfig?.trainingInfo || undefined,
     };
 
     console.log(

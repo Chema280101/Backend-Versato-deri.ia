@@ -62,6 +62,14 @@ export function initSocketServer(server: http.Server): SocketIOServer {
 
     socket.join(roomName);
 
+    socket.on('typing', (data: { conversationId: number; typing: boolean }) => {
+      socket.to(roomName).emit('typing', {
+        conversationId: data.conversationId,
+        userId: socket.data.userId,
+        typing: data.typing,
+      });
+    });
+
     socket.on('disconnect', () => {
       console.log(
         `[SOCKET]: Client disconnected. User ID: ${socket.data.userId}, Business ID: ${businessId}`,

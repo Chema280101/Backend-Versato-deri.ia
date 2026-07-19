@@ -623,6 +623,23 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    name: '017_user_avatar_and_profile_updates',
+    up: async (client: PoolClient) => {
+      await client.query(`
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT;
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS nombre_last_changed_at TIMESTAMP;
+      `);
+    },
+  },
+  {
+    name: '018_business_training_info_and_policies',
+    up: async (client: PoolClient) => {
+      await client.query(`
+        ALTER TABLE businesses ADD COLUMN IF NOT EXISTS training_info TEXT;
+      `);
+    },
+  },
 ];
 
 export async function runMigrations(pool: Pool): Promise<void> {

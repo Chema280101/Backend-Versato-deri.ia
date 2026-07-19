@@ -7,12 +7,14 @@ import authRouter from './routes/auth.routes';
 import conversationsRouter from './routes/conversations.routes';
 import adminRouter from './routes/admin.routes';
 import metricsRouter from './routes/metrics.routes';
+import businessRouter from './routes/business.routes';
 
 const app = express();
 
 // Middlewares
 app.use(
   express.json({
+    limit: '15mb',
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
@@ -59,5 +61,6 @@ app.use(authRouter);
 app.use(conversationsRouter);
 app.use(metricsRouter);
 app.use(adminRouter);
+app.use(businessRouter);
 
 export default app;
