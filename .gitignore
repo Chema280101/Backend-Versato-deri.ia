@@ -9,6 +9,9 @@ dist/
 .env.local
 .env.production
 
+# Backups
+backups/
+
 # Proyectos hermanos con sus propios repos
 website/
 frontend/

@@ -20,6 +20,7 @@ export const config = {
   isProduction: process.env.NODE_ENV === 'production',
   alertCheckIntervalMs: parseInt(process.env.ALERT_CHECK_INTERVAL_MS || '300000', 10),
   alertWebhookUrl: process.env.ALERT_WEBHOOK_URL || '',
+  geminiApiKey: process.env.GEMINI_API_KEY || '',
   backup: {
     enabled: process.env.BACKUP_ENABLED === 'true',
     directory: process.env.BACKUP_DIRECTORY || 'backups',
@@ -36,6 +37,7 @@ const requiredVars = [
   'APP_SECRET',
   'DATABASE_URL',
   'JWT_SECRET',
+  'GEMINI_API_KEY',
 ];
 
 requiredVars.forEach((varName) => {
